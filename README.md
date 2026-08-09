@@ -15,6 +15,11 @@ It has been running on my own server every hour since 2026-08-08.
 
 That last row is the design, not a curiosity.
 
+![Eleven consecutive hourly runs on 2026-08-08, from n8n's execution list](executions.png)
+
+*n8n's own execution list. Eleven consecutive hourly runs, every one green. The 22:49 entry is a
+manual run — me testing a change — which is why it breaks the pattern of :00:05 starts.*
+
 ---
 
 ## The shape

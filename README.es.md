@@ -14,6 +14,12 @@ Lleva corriendo en mi propio servidor, cada hora, desde el 8 de agosto de 2026.
 
 Esa última fila es el diseño, no una curiosidad.
 
+![Once ejecuciones consecutivas por hora el 8 de agosto de 2026, en la lista de n8n](executions.png)
+
+*La lista de ejecuciones del propio n8n. Once corridas seguidas, una por hora, todas en verde. La
+de las 22:49 es manual —yo probando un cambio— y por eso rompe el patrón de arranques a
+las :00:05.*
+
 ---
 
 ## La forma
