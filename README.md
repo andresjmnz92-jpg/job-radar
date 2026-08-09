@@ -129,8 +129,17 @@ field, and the script was wrong where the workflow was right.
 ## Files
 
 ```
-workflow.json    Import straight into n8n. No credentials, no personal data.
+workflow.json                    Import straight into n8n. No credentials, no personal data.
+code/parse-linkedin-alerts.js    The email parser described above.
+code/normalize-getonboard.js     Maps the REST API onto the fields the RSS sources emit.
+code/latam-search-terms.js       The five queries, and why these five.
+LICENSE                          MIT.
 ```
+
+The three files under `code/` are the JavaScript that lives inside the workflow's Code nodes,
+pulled out so it can be read on GitHub. `workflow.json` remains the source of truth — the
+extracts exist because a 23 KB JSON with `
+`-escaped code is not something anyone can review.
 
 Built and run on a self-hosted n8n — the same server described in
 [servidor-n8n-autoalojado](https://github.com/andresjmnz92-jpg/servidor-n8n-autoalojado).

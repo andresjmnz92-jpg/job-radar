@@ -133,8 +133,17 @@ Vale la pena decirlo al revés: escribí un script para auditar este workflow us
 ## Archivos
 
 ```
-workflow.json    Se importa directo en n8n. Sin credenciales ni datos personales.
+workflow.json                    Se importa directo en n8n. Sin credenciales ni datos personales.
+code/parse-linkedin-alerts.js    El parser de correos que se explica arriba.
+code/normalize-getonboard.js     Lleva la API REST a los mismos campos que emiten los RSS.
+code/latam-search-terms.js       Las cinco consultas, y por qué esas cinco.
+LICENSE                          MIT.
 ```
+
+Los tres archivos de `code/` son el JavaScript que vive dentro de los nodos Code del workflow,
+sacado aparte para poder leerlo en GitHub. La fuente sigue siendo `workflow.json`: los extractos
+existen porque un JSON de 23 KB con el código escapado con `
+` no lo revisa nadie.
 
 Construido y corriendo en un n8n autoalojado — el mismo servidor que describe
 [servidor-n8n-autoalojado](https://github.com/andresjmnz92-jpg/servidor-n8n-autoalojado).
