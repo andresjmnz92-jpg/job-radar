@@ -5,7 +5,8 @@
 Un workflow de n8n que lee cuatro bolsas de empleo cada hora, descarta lo ya visto, puntúa lo que
 queda contra un perfil usando un LLM, y avisa por Telegram solo de las que vale la pena abrir.
 
-Lleva corriendo en mi propio servidor, cada hora, desde el 8 de agosto de 2026.
+Lleva corriendo en mi propio servidor, una vez por hora, desde el 8 de agosto de 2026 — un solo
+día al momento de escribir esto, que es lo que cubren los números de abajo.
 
 | Ejecuciones programadas | **26** |
 | Fallos | **0** |
@@ -34,6 +35,21 @@ Cada hora ─┬─ Bolsa de n8n (RSS)        ─→ quitar anuncios de freelanc
                                                     │
                                            ≥ 6 → Telegram
 ```
+
+### Lo que llega
+
+![Cuatro avisos reales en Telegram, puntuados de 7 a 9](telegram-alerts.png)
+
+Avisos reales, no una maqueta. Cada uno trae el puntaje, la razón en una línea, los términos que
+conviene espejar en el CV, y el enlace.
+
+**Cuatro líneas son todo el producto.** Todo lo que viene antes existe para que esto llegue un
+puñado de veces al día en vez de doscientas.
+
+**En esa captura se ven dos defectos, y los dejo ahí.** El `&` de *"Architect &amp; Ops
+Director"* está escapado dos veces: la fuente ya entrega `&amp;` codificado y el workflow lo
+vuelve a escapar. Y ElevateOS llega dos veces, así que al dedupe lo están venciendo dos fuentes
+que publican el mismo puesto con URLs distintas. Los dos están abiertos y listados abajo.
 
 ---
 
@@ -104,6 +120,15 @@ Una oferta que dice "Remote" y después "from Portugal" es remota *y* te excluye
 pone tope de 4 sobre 10 por bien que encaje el resto, porque un puesto que no puede contratarte
 no vale tu tiempo aunque describa tu carrera entera.
 
+Ese tope hay que leerlo junto al umbral del diagrama: **4 es menos que 6, así que una oferta
+bloqueada por geografía nunca llega al teléfono.** Ese es el sentido de poner un techo en vez de
+restar puntos — ningún encaje se lo compra.
+
+En la práctica el modelo es más duro que la regla. En un día entero de corridas, toda oferta
+bloqueada volvió con **0, no con 4** — incluidas tres de mi carril exacto (ciclo de ingresos,
+claims, Epic) que perdieron solo por país. El tope es un techo que el modelo nunca usa: decide
+que valen cero, y no se equivoca.
+
 Esa sola regla quitó la mayoría de los falsos positivos.
 
 ---
@@ -134,6 +159,18 @@ Vale la pena decirlo al revés: escribí un script para auditar este workflow us
   no tengo datos de si un 9/10 convierte mejor que un 7/10. Afirmarlo exigiría una muestra que
   todavía no tengo.
 
+### Abiertos, y peores de lo que parecen
+
+- **Los ampersands se escapan dos veces.** La decisión 4 de arriba escapa el mensaje ya armado
+  una sola vez, que era el arreglo de escapar campo por campo. Lo que no contempló son las
+  fuentes que ya entregan `&amp;` codificado. El costo visible es un carácter feo; el costo real
+  es que Telegram responde `Bad request - please check your parameters`, la tanda muere a la
+  mitad, y el dedupe ya marcó esas ofertas como vistas, así que no se reintentan nunca. **Un bug
+  cosmético y uno de pérdida silenciosa de datos son aquí el mismo bug.**
+- **Deduplicar por URL no ve los duplicados entre fuentes.** El mismo puesto publicado en dos
+  bolsas trae dos URLs, así que llega dos veces. Deduplicar por título normalizado más empresa lo
+  atraparía, a riesgo de fundir ofertas realmente distintas del mismo empleador.
+
 ---
 
 ## Archivos
@@ -148,8 +185,8 @@ LICENSE                          MIT.
 
 Los tres archivos de `code/` son el JavaScript que vive dentro de los nodos Code del workflow,
 sacado aparte para poder leerlo en GitHub. La fuente sigue siendo `workflow.json`: los extractos
-existen porque un JSON de 23 KB con el código escapado con `
-` no lo revisa nadie.
+existen porque nadie revisa un JSON de 23 KB donde el código va en una sola línea con los saltos
+escapados.
 
 Construido y corriendo en un n8n autoalojado — el mismo servidor que describe
 [servidor-n8n-autoalojado](https://github.com/andresjmnz92-jpg/servidor-n8n-autoalojado).

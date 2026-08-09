@@ -6,7 +6,8 @@ An n8n workflow that reads four job boards every hour, throws away everything al
 scores what's left against a profile using an LLM, and pings Telegram only for the ones worth
 opening.
 
-It has been running on my own server every hour since 2026-08-08.
+It has been running on my own server, once an hour, since 2026-08-08 — a single day at the time
+of writing, which is what the numbers below cover.
 
 | Scheduled runs | **26** |
 | Failures | **0** |
@@ -34,6 +35,22 @@ Every hour ─┬─ n8n job board (RSS)      ─→ drop freelancer ads ─┐
                                                  │
                                         ≥ 6 → Telegram
 ```
+
+### What arrives
+
+![Four real alerts on Telegram, scored 7 to 9](telegram-alerts.png)
+
+Real alerts, not a mockup. Each one carries the score, a one-line reason, the terms worth
+mirroring in the CV, and the link. The reasons come back in Spanish because the prompt is written
+in Spanish; the postings are read in English.
+
+**Four lines is the whole product.** Everything upstream exists so that this arrives a handful of
+times a day instead of two hundred.
+
+**Two defects are visible in that screenshot, and I am leaving them there.** The `&` in
+*"Architect &amp; Ops Director"* is escaped twice — the source already delivers `&amp;` and the
+workflow escapes it again. And ElevateOS arrives twice, so the dedupe is being beaten by two
+sources publishing the same job under different URLs. Both are open, both are listed below.
 
 ---
 
@@ -99,6 +116,15 @@ A posting that says "Remote" and then "from Portugal" is remote *and* excludes y
 caps those at 4 out of 10 no matter how well the rest fits, because a job that cannot hire you
 is not worth your time even when it describes your entire career.
 
+Read that cap together with the threshold in the diagram: **4 is below 6, so a geographically
+blocked posting can never reach the phone.** That is the point of setting a ceiling rather than
+subtracting points — no amount of fit buys its way past it.
+
+In practice the model is harsher than the rule. Across a full day of runs, every blocked posting
+came back at **0, not 4** — including three that were my exact field (revenue cycle, claims, Epic)
+and lost on country alone. The cap is a ceiling the model never uses; it decides these are worth
+zero, and it is not wrong.
+
 That single rule removed most of the false positives.
 
 ---
@@ -129,6 +155,18 @@ field, and the script was wrong where the workflow was right.
   flooding me — I do not have data on whether a 9/10 converts better than a 7/10. Claiming that
   would need a sample I don't have yet.
 
+### Open, and worse than they look
+
+- **Ampersands are escaped twice.** Decision 4 above escapes the assembled message once, which
+  fixed escaping field by field. It did not account for sources that deliver `&amp;` already
+  encoded. The visible cost is a wrong character; the real cost is that Telegram answers
+  `Bad request - please check your parameters` and the run dies mid-batch — and the dedupe has
+  already marked those postings as seen, so they are never retried. **A cosmetic bug and a
+  silent data-loss bug are the same bug here.**
+- **Deduping on the URL misses cross-source duplicates.** The same job published on two boards
+  has two URLs, so it arrives twice. Deduping on a normalized title plus company would catch it,
+  at the risk of collapsing genuinely different postings from the same employer.
+
 ---
 
 ## Files
@@ -143,8 +181,8 @@ LICENSE                          MIT.
 
 The three files under `code/` are the JavaScript that lives inside the workflow's Code nodes,
 pulled out so it can be read on GitHub. `workflow.json` remains the source of truth — the
-extracts exist because a 23 KB JSON with `
-`-escaped code is not something anyone can review.
+extracts exist because nobody reviews a 23 KB JSON whose code sits on one line with the
+newlines escaped.
 
 Built and run on a self-hosted n8n — the same server described in
 [servidor-n8n-autoalojado](https://github.com/andresjmnz92-jpg/servidor-n8n-autoalojado).
