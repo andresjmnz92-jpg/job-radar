@@ -1,8 +1,8 @@
 ***English** · [Español](README.es.md)*
 
-# Job Radar — five noisy sources, one Telegram message
+# Job Radar — four noisy sources, one Telegram message
 
-An n8n workflow that reads five job boards every hour, throws away everything already seen,
+An n8n workflow that reads four job boards every hour, throws away everything already seen,
 scores what's left against a profile using an LLM, and pings Telegram only for the ones worth
 opening.
 
@@ -22,13 +22,12 @@ That last row is the design, not a curiosity.
 ```
 Every hour ─┬─ n8n job board (RSS)      ─→ drop freelancer ads ─┐
             ├─ LinkedIn alerts (Gmail)  ─→ parse the emails    ─┤
-            ├─ Himalayas (RSS)          ─┐                      ├─→ drop already seen
-            ├─ We Work Remotely (RSS)   ─┼─→ keyword filter    ─┤
+            ├─ We Work Remotely (RSS)   ─┬─→ keyword filter    ─┼─→ drop already seen
             └─ Get on Board (REST API)  ─┘                      ┘
                                                                  │
                                      score 0-10 with an LLM ←────┘
                                                  │
-                                        ≥ 7 → Telegram
+                                        ≥ 6 → Telegram
 ```
 
 ---
@@ -42,8 +41,8 @@ monthly budget would be gone in days. The regex is deliberately broad: **it disc
 and lets the model judge the rest.**
 
 **2. A dead source cannot kill the run.**
-Every feed carries `onError: continueRegularOutput` and two retries. If Himalayas is down, the
-other four still deliver. The alternative — one 503 wiping out the hour — is how scheduled
+Every feed carries `onError: continueRegularOutput` and two retries. If one feed is down, the
+others still deliver. The alternative — one 503 wiping out the hour — is how scheduled
 workflows quietly stop working without anyone noticing.
 
 **3. The dedupe key is a cleaned URL.**
@@ -79,7 +78,7 @@ Import `workflow.json` into n8n and change four things, all marked `>>> REPLACE`
    specific. Name the tools, the industry and the seniority you actually have. A vague profile
    produces vague scores.
 2. **The keyword filter**, in *In my lane only*. The words of your field.
-3. **The search terms**, in *What to search*. Three queries for the LatAm board.
+3. **The search terms**, in *What to search*. Five queries for the LatAm board.
 4. **Your Telegram chat ID**, in *Tell me on Telegram*.
 
 Credentials needed: Gmail (read-only is enough), Telegram bot, and an Anthropic key. Set a
@@ -96,6 +95,22 @@ caps those at 4 out of 10 no matter how well the rest fits, because a job that c
 is not worth your time even when it describes your entire career.
 
 That single rule removed most of the false positives.
+
+---
+
+### The field that lies
+
+We Work Remotely publishes a `region` field. Of 100 postings measured on 2026-08-08, **90 said
+"Anywhere in the World"** — and **15 of those 90 hid a real restriction in the body**: *"open to
+candidates located in British Columbia or Ontario"*, *"located in the Mission District of San
+Francisco"*, *"authorized to work in the United States"*.
+
+One in six. That is why the prompt does not get the region field on its own: it gets the first
+1,500 characters of the posting text. **The metadata a company publishes is an intention; the
+restriction lives in the fine print.**
+
+Worth saying the other way round: I wrote a script to audit this workflow using the `region`
+field, and the script was wrong where the workflow was right.
 
 ---
 
@@ -118,4 +133,4 @@ workflow.json    Import straight into n8n. No credentials, no personal data.
 ```
 
 Built and run on a self-hosted n8n — the same server described in
-[rag-privado](https://github.com/andresjmnz92-jpg/rag-privado).
+[servidor-n8n-autoalojado](https://github.com/andresjmnz92-jpg/servidor-n8n-autoalojado).

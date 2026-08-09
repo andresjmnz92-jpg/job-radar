@@ -1,8 +1,8 @@
 *[English](README.md) · **Español***
 
-# Radar de empleo — cinco fuentes ruidosas, un mensaje de Telegram
+# Radar de empleo — cuatro fuentes ruidosas, un mensaje de Telegram
 
-Un workflow de n8n que lee cinco bolsas de empleo cada hora, descarta lo ya visto, puntúa lo que
+Un workflow de n8n que lee cuatro bolsas de empleo cada hora, descarta lo ya visto, puntúa lo que
 queda contra un perfil usando un LLM, y avisa por Telegram solo de las que vale la pena abrir.
 
 Lleva corriendo en mi propio servidor, cada hora, desde el 8 de agosto de 2026.
@@ -21,13 +21,12 @@ Esa última fila es el diseño, no una curiosidad.
 ```
 Cada hora ─┬─ Bolsa de n8n (RSS)        ─→ quitar anuncios de freelancers ─┐
            ├─ Alertas de LinkedIn (Gmail) ─→ parsear los correos          ─┤
-           ├─ Himalayas (RSS)           ─┐                                 ├─→ quitar las vistas
-           ├─ We Work Remotely (RSS)    ─┼─→ filtro por palabras clave    ─┤
+           ├─ We Work Remotely (RSS)    ─┬─→ filtro por palabras clave    ─┼─→ quitar las vistas
            └─ Get on Board (API REST)   ─┘                                 ┘
                                                                             │
                                      puntuar de 0 a 10 con un LLM ←─────────┘
                                                     │
-                                           ≥ 7 → Telegram
+                                           ≥ 6 → Telegram
 ```
 
 ---
@@ -41,7 +40,7 @@ LLM y un tope mensual pequeño se agota en días. El regex es amplio a propósit
 obvio y deja que el modelo juzgue el resto.**
 
 **2. Una fuente caída no puede tumbar la ejecución.**
-Cada feed lleva `onError: continueRegularOutput` y dos reintentos. Si Himalayas está caído, los
+Cada feed lleva `onError: continueRegularOutput` y dos reintentos. Si una fuente está caída, las
 otros cuatro siguen entregando. La alternativa —un 503 que se lleva la hora entera— es la forma
 en que los workflows programados dejan de funcionar sin que nadie se entere.
 
@@ -83,7 +82,7 @@ archivo:
    Nombra las herramientas, el sector y la seniority que de verdad tienes. Un perfil vago produce
    puntajes vagos.
 2. **El filtro de palabras clave**, en *In my lane only*. Las palabras de tu campo.
-3. **Los términos de búsqueda**, en *What to search*. Tres consultas para la bolsa de LatAm.
+3. **Los términos de búsqueda**, en *What to search*. Cinco consultas para la bolsa de LatAm.
 4. **Tu chat ID de Telegram**, en *Tell me on Telegram*.
 
 Credenciales necesarias: Gmail (basta con lectura), un bot de Telegram y una llave de Anthropic.
@@ -100,6 +99,22 @@ pone tope de 4 sobre 10 por bien que encaje el resto, porque un puesto que no pu
 no vale tu tiempo aunque describa tu carrera entera.
 
 Esa sola regla quitó la mayoría de los falsos positivos.
+
+---
+
+### El campo que miente
+
+We Work Remotely publica un campo `region`. De 100 ofertas medidas el 8 de agosto de 2026, **90
+decían "Anywhere in the World"** — y **15 de esas 90 escondían una restricción real en el cuerpo
+del anuncio**: *"open to candidates located in British Columbia or Ontario"*, *"located in the
+Mission District of San Francisco"*, *"authorized to work in the United States"*.
+
+Uno de cada seis. Por eso el prompt no recibe el campo de región y ya: recibe los primeros 1.500
+caracteres del texto del anuncio. **El metadato que publica la empresa es una intención; la
+restricción vive en la letra pequeña.**
+
+Vale la pena decirlo al revés: escribí un script para auditar este workflow usando el campo
+`region`, y el script se equivocó donde el workflow acertaba.
 
 ---
 
@@ -122,4 +137,4 @@ workflow.json    Se importa directo en n8n. Sin credenciales ni datos personales
 ```
 
 Construido y corriendo en un n8n autoalojado — el mismo servidor que describe
-[rag-privado](https://github.com/andresjmnz92-jpg/rag-privado).
+[servidor-n8n-autoalojado](https://github.com/andresjmnz92-jpg/servidor-n8n-autoalojado).
