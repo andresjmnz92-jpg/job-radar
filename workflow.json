@@ -412,7 +412,7 @@
     {
       "parameters": {
         "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
-        "text": "={{ ( (($json.output && $json.output.score !== undefined) ? ('\\u{1F3AF} ' + $json.output.score + '/10 — ') : '\\u{1F4BC} ') + String($('Only what I haven\\'t seen').item.json.title) + '\\n\\n' + (($json.output && $json.output.reason) ? (String($json.output.reason) + '\\n\\n') : '') + (($json.output && $json.output.keywords && $json.output.keywords.length) ? ('Mirror: ' + $json.output.keywords.join(', ') + '\\n\\n') : '') + String($('Only what I haven\\'t seen').item.json.link) ).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;') }}",
+        "text": "={{ ( (($json.output && $json.output.score !== undefined) ? ('\\u{1F3AF} ' + $json.output.score + '/10 — ') : '\\u{1F4BC} ') + String($('Only what I haven\\'t seen').item.json.title) + '\\n\\n' + (($json.output && $json.output.reason) ? (String($json.output.reason) + '\\n\\n') : '') + (($json.output && $json.output.keywords && $json.output.keywords.length) ? ('Mirror: ' + $json.output.keywords.join(', ') + '\\n\\n') : '') + String($('Only what I haven\\'t seen').item.json.link) ).replace(/&(?!(?:amp|lt|gt|quot|apos|#\\d+);)/g, '&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;') }}",
         "additionalFields": {
           "appendAttribution": false
         },
@@ -431,6 +431,51 @@
       "maxTries": 2,
       "waitBetweenTries": 1000,
       "notes": "HTML is escaped before sending: a job title with an ampersand would otherwise break the message."
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 21,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "2bb76237-4844-472f-8997-50ac88abe341",
+      "name": "Daily heartbeat",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -288,
+        1150
+      ],
+      "notes": "Exists so that silence stops being ambiguous. Without it, 'nothing good today' and 'the radar crashed' look identical from the phone."
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "Radar alive. Runs hourly over 4 sources. If nothing arrived today, nothing scored 6/10 - it did not crash.",
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "resource": "message",
+        "operation": "sendMessage"
+      },
+      "id": "44de74a1-5bcc-4871-a81d-787ce7bc1b7e",
+      "name": "Say it's alive",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -32,
+        1150
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Fixed message on purpose: it is true without counting anything, so no state has to be kept between runs."
     }
   ],
   "connections": {
@@ -619,6 +664,17 @@
         [
           {
             "node": "Tell me on Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily heartbeat": {
+      "main": [
+        [
+          {
+            "node": "Say it's alive",
             "type": "main",
             "index": 0
           }

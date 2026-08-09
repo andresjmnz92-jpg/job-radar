@@ -34,7 +34,14 @@ Every hour ─┬─ n8n job board (RSS)      ─→ drop freelancer ads ─┐
                                      score 0-10 with an LLM ←────┘
                                                  │
                                         ≥ 6 → Telegram
+
+Once a day ──────────────────────────── heartbeat → Telegram
 ```
+
+The second trigger exists because silence meant two things at once: *"nothing worth your time
+today"* and *"this crashed"*. I asked which one it was three times in two days, and all three
+times it was running fine. One fixed message a day tells them apart, and it needs no state to be
+true.
 
 ### What arrives
 
@@ -47,10 +54,11 @@ in Spanish; the postings are read in English.
 **Four lines is the whole product.** Everything upstream exists so that this arrives a handful of
 times a day instead of two hundred.
 
-**Two defects are visible in that screenshot, and I am leaving them there.** The `&` in
-*"Architect &amp; Ops Director"* is escaped twice — the source already delivers `&amp;` and the
-workflow escapes it again. And ElevateOS arrives twice, so the dedupe is being beaten by two
-sources publishing the same job under different URLs. Both are open, both are listed below.
+**Two defects are visible in that screenshot, and I am leaving it as it was taken.** The `&` in
+*"Architect &amp; Ops Director"* is escaped twice, and ElevateOS arrives twice. The first is now
+fixed — the section below explains why it was not a cosmetic bug. The second is still open. The
+screenshot predates the fix and stays that way on purpose: replacing it with a clean one would
+delete the evidence that the bug existed.
 
 ---
 
@@ -94,14 +102,17 @@ It does not scrape LinkedIn. It reads the alert emails LinkedIn already sends to
 
 ## Making it yours
 
-Import `workflow.json` into n8n and change four things, all marked `>>> REPLACE` in the file:
+Import `workflow.json` into n8n and change four things. Search the file for **`REPLACE`** and you
+will hit all of them:
 
 1. **The profile**, in the system message of *Score the job*. This is the whole engine — be
    specific. Name the tools, the industry and the seniority you actually have. A vague profile
-   produces vague scores.
+   produces vague scores. What ships is a placeholder, not my profile.
 2. **The keyword filter**, in *In my lane only*. The words of your field.
 3. **The search terms**, in *What to search*. Five queries for the LatAm board.
-4. **Your Telegram chat ID**, in *Tell me on Telegram*.
+4. **Your Telegram chat ID**, in **both** Telegram nodes — *Tell me on Telegram* and
+   *Say it's alive*. Miss the second one and the heartbeat fails silently at 21:00, which is
+   exactly the failure the heartbeat exists to prevent.
 
 Credentials needed: Gmail (read-only is enough), Telegram bot, and an Anthropic key. Set a
 **spending cap on the model account before connecting it** — an hourly workflow with an LLM in
@@ -155,17 +166,39 @@ field, and the script was wrong where the workflow was right.
   flooding me — I do not have data on whether a 9/10 converts better than a 7/10. Claiming that
   would need a sample I don't have yet.
 
-### Open, and worse than they look
+### Fixed: the ampersand that was not cosmetic
 
-- **Ampersands are escaped twice.** Decision 4 above escapes the assembled message once, which
-  fixed escaping field by field. It did not account for sources that deliver `&amp;` already
-  encoded. The visible cost is a wrong character; the real cost is that Telegram answers
-  `Bad request - please check your parameters` and the run dies mid-batch — and the dedupe has
-  already marked those postings as seen, so they are never retried. **A cosmetic bug and a
-  silent data-loss bug are the same bug here.**
+Escaping the assembled message once — decision 4 above — fixed escaping field by field, but did
+not account for sources that deliver `&amp;` already encoded. Escaping that again produces
+`&amp;amp;`.
+
+The visible cost was a wrong character. The real cost was this, from the execution log:
+
+```
+Avisarme por Telegram → "Bad request - please check your parameters"
+```
+
+Telegram rejects the malformed HTML, **the run dies mid-batch, and the dedupe has already marked
+those postings as seen** — so the ones queued behind it are never retried. A cosmetic bug and a
+silent data-loss bug turned out to be the same bug.
+
+The fix escapes only the ampersands that do not already start an entity:
+
+```js
+.replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/g, '&amp;')
+```
+
+Verified against six cases including `Q&A &amp; Testing`, which mixes raw and encoded in one
+string. **Not yet verified in the wild** — since deploying it, no alert carrying an `&` has gone
+out, so Telegram has not exercised it.
+
+### Still open
+
 - **Deduping on the URL misses cross-source duplicates.** The same job published on two boards
-  has two URLs, so it arrives twice. Deduping on a normalized title plus company would catch it,
-  at the risk of collapsing genuinely different postings from the same employer.
+  has two URLs, so it arrives twice — the ElevateOS pair in the screenshot. Deduping on a
+  normalized title plus company would catch it, at the risk of collapsing genuinely different
+  postings from the same employer. Not fixed: changing the dedupe key also invalidates the stored
+  history, which would replay every posting ever seen as new.
 
 ---
 

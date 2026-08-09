@@ -34,7 +34,14 @@ Cada hora ─┬─ Bolsa de n8n (RSS)        ─→ quitar anuncios de freelanc
                                      puntuar de 0 a 10 con un LLM ←─────────┘
                                                     │
                                            ≥ 6 → Telegram
+
+Una vez al día ──────────────────────────── latido → Telegram
 ```
+
+El segundo trigger existe porque el silencio significaba dos cosas a la vez: *"hoy no hay nada
+que valga tu tiempo"* y *"esto se cayó"*. Pregunté cuál de las dos era tres veces en dos días, y
+las tres veces estaba corriendo bien. Un mensaje fijo al día las distingue, y no necesita guardar
+estado para ser cierto.
 
 ### Lo que llega
 
@@ -46,10 +53,11 @@ conviene espejar en el CV, y el enlace.
 **Cuatro líneas son todo el producto.** Todo lo que viene antes existe para que esto llegue un
 puñado de veces al día en vez de doscientas.
 
-**En esa captura se ven dos defectos, y los dejo ahí.** El `&` de *"Architect &amp; Ops
-Director"* está escapado dos veces: la fuente ya entrega `&amp;` codificado y el workflow lo
-vuelve a escapar. Y ElevateOS llega dos veces, así que al dedupe lo están venciendo dos fuentes
-que publican el mismo puesto con URLs distintas. Los dos están abiertos y listados abajo.
+**En esa captura se ven dos defectos, y la dejo tal como se tomó.** El `&` de *"Architect &amp;
+Ops Director"* está escapado dos veces, y ElevateOS llega dos veces. El primero **ya está
+arreglado** — abajo se explica por qué no era un bug cosmético. El segundo sigue abierto. La
+captura es anterior al arreglo y se queda así a propósito: cambiarla por una limpia borraría la
+evidencia de que el bug existió.
 
 ---
 
@@ -97,15 +105,17 @@ No raspa LinkedIn. Lee los correos de alerta que LinkedIn ya manda a tu propia b
 
 ## Cómo hacerlo tuyo
 
-Importa `workflow.json` en n8n y cambia cuatro cosas, todas marcadas con `>>> REPLACE` en el
-archivo:
+Importa `workflow.json` en n8n y cambia cuatro cosas. Busca **`REPLACE`** en el archivo y las
+encuentras todas:
 
 1. **El perfil**, en el mensaje de sistema de *Score the job*. Es el motor entero — sé concreto.
    Nombra las herramientas, el sector y la seniority que de verdad tienes. Un perfil vago produce
-   puntajes vagos.
+   puntajes vagos. Lo que viene es un ejemplo genérico, no mi perfil.
 2. **El filtro de palabras clave**, en *In my lane only*. Las palabras de tu campo.
 3. **Los términos de búsqueda**, en *What to search*. Cinco consultas para la bolsa de LatAm.
-4. **Tu chat ID de Telegram**, en *Tell me on Telegram*.
+4. **Tu chat ID de Telegram**, en **los dos** nodos de Telegram — *Tell me on Telegram* y
+   *Say it's alive*. Si se te pasa el segundo, el latido falla en silencio a las 21:00, que es
+   justo el fallo que el latido existe para evitar.
 
 Credenciales necesarias: Gmail (basta con lectura), un bot de Telegram y una llave de Anthropic.
 Pon un **tope de gasto en la cuenta del modelo antes de conectarla** — un workflow que corre cada
@@ -159,17 +169,39 @@ Vale la pena decirlo al revés: escribí un script para auditar este workflow us
   no tengo datos de si un 9/10 convierte mejor que un 7/10. Afirmarlo exigiría una muestra que
   todavía no tengo.
 
-### Abiertos, y peores de lo que parecen
+### Arreglado: el ampersand que no era cosmético
 
-- **Los ampersands se escapan dos veces.** La decisión 4 de arriba escapa el mensaje ya armado
-  una sola vez, que era el arreglo de escapar campo por campo. Lo que no contempló son las
-  fuentes que ya entregan `&amp;` codificado. El costo visible es un carácter feo; el costo real
-  es que Telegram responde `Bad request - please check your parameters`, la tanda muere a la
-  mitad, y el dedupe ya marcó esas ofertas como vistas, así que no se reintentan nunca. **Un bug
-  cosmético y uno de pérdida silenciosa de datos son aquí el mismo bug.**
+Escapar el mensaje ya armado una sola vez —la decisión 4 de arriba— arregló el escapar campo por
+campo, pero no contempló las fuentes que ya entregan `&amp;` codificado. Volver a escaparlo
+produce `&amp;amp;`.
+
+El costo visible era un carácter feo. El costo real era este, sacado del registro de ejecución:
+
+```
+Avisarme por Telegram → "Bad request - please check your parameters"
+```
+
+Telegram rechaza el HTML mal formado, **la tanda muere a la mitad, y el dedupe ya marcó esas
+ofertas como vistas**, así que las que venían detrás no se reintentan nunca. Un bug cosmético y
+uno de pérdida silenciosa de datos resultaron ser el mismo bug.
+
+El arreglo escapa solo los ampersands que no inician ya una entidad:
+
+```js
+.replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/g, '&amp;')
+```
+
+Verificado contra seis casos, incluido `Q&A &amp; Testing`, que mezcla crudo y codificado en una
+misma cadena. **Todavía no verificado en vivo**: desde que se desplegó no ha salido ningún aviso
+con un `&`, así que Telegram no lo ha ejercitado.
+
+### Sigue abierto
+
 - **Deduplicar por URL no ve los duplicados entre fuentes.** El mismo puesto publicado en dos
-  bolsas trae dos URLs, así que llega dos veces. Deduplicar por título normalizado más empresa lo
-  atraparía, a riesgo de fundir ofertas realmente distintas del mismo empleador.
+  bolsas trae dos URLs, así que llega dos veces — el par de ElevateOS de la captura. Deduplicar
+  por título normalizado más empresa lo atraparía, a riesgo de fundir ofertas realmente distintas
+  del mismo empleador. Sin arreglar: cambiar la llave del dedupe también invalida el historial
+  guardado, y eso reproduciría como nuevas todas las ofertas ya vistas.
 
 ---
 
