@@ -1,0 +1,121 @@
+***English** · [Español](README.es.md)*
+
+# Job Radar — five noisy sources, one Telegram message
+
+An n8n workflow that reads five job boards every hour, throws away everything already seen,
+scores what's left against a profile using an LLM, and pings Telegram only for the ones worth
+opening.
+
+It has been running on my own server every hour since 2026-08-08.
+
+| Scheduled runs | **26** |
+| Failures | **0** |
+| Median duration | 18 s |
+| Fastest run | **0.4 s** — nothing new, so not a single LLM call was paid for |
+
+That last row is the design, not a curiosity.
+
+---
+
+## The shape
+
+```
+Every hour ─┬─ n8n job board (RSS)      ─→ drop freelancer ads ─┐
+            ├─ LinkedIn alerts (Gmail)  ─→ parse the emails    ─┤
+            ├─ Himalayas (RSS)          ─┐                      ├─→ drop already seen
+            ├─ We Work Remotely (RSS)   ─┼─→ keyword filter    ─┤
+            └─ Get on Board (REST API)  ─┘                      ┘
+                                                                 │
+                                     score 0-10 with an LLM ←────┘
+                                                 │
+                                        ≥ 7 → Telegram
+```
+
+---
+
+## The four decisions that make it survive
+
+**1. The cheap filter runs before the expensive one.**
+General boards return ~200 jobs an hour, nearly all from unrelated fields. A regex over the
+title drops them for free. Without it, every one of those 200 would cost an LLM call and a small
+monthly budget would be gone in days. The regex is deliberately broad: **it discards the obvious
+and lets the model judge the rest.**
+
+**2. A dead source cannot kill the run.**
+Every feed carries `onError: continueRegularOutput` and two retries. If Himalayas is down, the
+other four still deliver. The alternative — one 503 wiping out the hour — is how scheduled
+workflows quietly stop working without anyone noticing.
+
+**3. The dedupe key is a cleaned URL.**
+LinkedIn's alert emails carry tracking tokens that change in every send. Deduping on the raw
+link would treat the same job as new every hour, forever. The parser strips the URL down to
+`/jobs/view/<id>` first. **A subtle bug that would have looked like the model going crazy.**
+
+**4. A second model repairs the first one's output.**
+Scoring returns structured JSON through an output parser. When the JSON comes back malformed,
+a repair model fixes it instead of the run dying. And if scoring fails entirely, the job is
+**still** sent — without a score. Losing a real opening costs more than a noisy alert.
+
+---
+
+## Reading the LinkedIn emails
+
+The trickiest part isn't the AI, it's the parsing. Each alert holds several jobs separated by a
+line of dashes, and inside each block the useful lines come first — title, company, location —
+followed by decorations that vary: *"3 connections"*, *"Actively recruiting"*, *"Easy Apply"*.
+
+Counting backwards from the link looks natural and shifts the title by one on any post that has
+a decoration. So the parser **counts from the top**, after filtering a known noise list.
+
+It does not scrape LinkedIn. It reads the alert emails LinkedIn already sends to your own inbox.
+
+---
+
+## Making it yours
+
+Import `workflow.json` into n8n and change four things, all marked `>>> REPLACE` in the file:
+
+1. **The profile**, in the system message of *Score the job*. This is the whole engine — be
+   specific. Name the tools, the industry and the seniority you actually have. A vague profile
+   produces vague scores.
+2. **The keyword filter**, in *In my lane only*. The words of your field.
+3. **The search terms**, in *What to search*. Three queries for the LatAm board.
+4. **Your Telegram chat ID**, in *Tell me on Telegram*.
+
+Credentials needed: Gmail (read-only is enough), Telegram bot, and an Anthropic key. Set a
+**spending cap on the model account before connecting it** — an hourly workflow with an LLM in
+the loop is a subscription you did not intend to buy.
+
+### The rule worth stealing
+
+The scoring prompt has one rule that overrides all others: **can they actually hire this
+person?** Not what country the company is in — where the person in the role is allowed to live.
+
+A posting that says "Remote" and then "from Portugal" is remote *and* excludes you. The prompt
+caps those at 4 out of 10 no matter how well the rest fits, because a job that cannot hire you
+is not worth your time even when it describes your entire career.
+
+That single rule removed most of the false positives.
+
+---
+
+## What it doesn't do
+
+- **It doesn't apply for you.** It decides what deserves your attention; you write the message.
+- **It doesn't scrape sites that forbid it.** Four RSS feeds, one public API, and your own inbox.
+- **It doesn't learn.** Scores come from a static prompt. Improving it means editing the profile,
+  not training anything.
+- **The scores have not been validated against outcomes.** I know it fires and I know it's not
+  flooding me — I do not have data on whether a 9/10 converts better than a 7/10. Claiming that
+  would need a sample I don't have yet.
+
+---
+
+## Files
+
+```
+workflow.json    Import straight into n8n. No credentials, no personal data.
+```
+
+Built and run on a self-hosted n8n — the same server described in
+[rag-privado](https://github.com/andresjmnz92-jpg/rag-privado).

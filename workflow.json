@@ -1,0 +1,303 @@
+{
+  "name": "Job Radar",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "hours" }] } },
+      "id": "3d73f2e0-e1f6-4017-bbf6-cc1737a75afa",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-288, 320]
+    },
+    {
+      "parameters": { "url": "https://community.n8n.io/c/jobs/13.rss", "options": {} },
+      "id": "f31ed60e-838b-4885-b970-637a78b310fa",
+      "name": "n8n job board",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [80, 0],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            { "id": "no-for-hire", "leftValue": "={{ $json.title }}", "operator": { "type": "string", "operation": "notContains" }, "rightValue": "for hire" },
+            { "id": "no-available-for", "leftValue": "={{ $json.title }}", "operator": { "type": "string", "operation": "notContains" }, "rightValue": "available for" },
+            { "id": "no-available-colon", "leftValue": "={{ $json.title }}", "operator": { "type": "string", "operation": "notContains" }, "rightValue": "available:" },
+            { "id": "no-starts-available", "leftValue": "={{ $json.title }}", "operator": { "type": "string", "operation": "notStartsWith" }, "rightValue": "available" },
+            { "id": "no-looking-remote", "leftValue": "={{ $json.title }}", "operator": { "type": "string", "operation": "notContains" }, "rightValue": "looking for remote" },
+            { "id": "no-looking-opps", "leftValue": "={{ $json.title }}", "operator": { "type": "string", "operation": "notContains" }, "rightValue": "looking for opportunities" }
+          ]
+        },
+        "options": { "ignoreCase": true }
+      },
+      "id": "acc38c83-8191-4d37-a374-c9500d065322",
+      "name": "Real openings only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [336, 0],
+      "notes": "This feed mixes two things: companies hiring, and freelancers offering themselves. Without this filter most alerts would be competitors, not jobs."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 20,
+        "simple": false,
+        "filters": { "q": "from:jobalerts-noreply@linkedin.com newer_than:2d", "readStatus": "both" },
+        "options": {}
+      },
+      "id": "22dac54c-0c9a-4d29-a3d4-5a21756733a5",
+      "name": "LinkedIn alerts",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [80, 240],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "notes": "Reads the job-alert emails LinkedIn sends you. It does NOT scrape LinkedIn: the inbox is yours. newer_than:2d stops it re-reading history every hour."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Each LinkedIn alert holds several jobs separated by a line of dashes.\n// Inside a block the order is: Title / Company / Location / View job: <url>,\n// and after that come decorations (\"3 connections\", \"Actively recruiting\"...).\n// That is why we count from the TOP: counting backwards from the link shifts the title.\nconst NOISE = [\n  /^your job alert for/i,\n  /^new jobs? match/i,\n  /^\\d+ new jobs? match/i,\n  /^\\d+\\s+connections?$/i,\n  /^\\d+\\s+(school\\s+)?alum(ni)?\\b/i,\n  /^this company is actively hiring$/i,\n  /^actively recruiting$/i,\n  /^apply with resume/i,\n  /^easy apply$/i,\n  /^promoted$/i,\n  /^viewed$/i,\n  /^be an early applicant$/i,\n];\n\nconst jobs = [];\n\nfor (const item of $input.all()) {\n  const blocks = String(item.json.text || '').split(/\\n-{10,}\\n/);\n\n  for (const block of blocks) {\n    const lines = block.split('\\n').map((l) => l.trim());\n    const i = lines.findIndex((l) => l.startsWith('View job: '));\n    if (i === -1) continue;\n\n    const m = lines[i].match(/jobs\\/view\\/(\\d+)/);\n    if (!m) continue;\n\n    const data = lines\n      .slice(0, i)\n      .filter((l) => l && !NOISE.some((re) => re.test(l)));\n    if (data.length < 3) continue;\n\n    const [title, company, place] = data;\n\n    jobs.push({\n      json: {\n        title: title + ' — ' + company,\n        // Clean link on purpose: the original carries tracking tokens that change\n        // in every email, which would make the dedupe see the same job as new.\n        link: 'https://www.linkedin.com/jobs/view/' + m[1],\n        contentSnippet: 'Company: ' + company + '. Location: ' + place + '. Source: LinkedIn job alert.',\n      },\n    });\n  }\n}\n\nreturn jobs;"
+      },
+      "id": "825cf0fe-5b38-441e-b207-98a808af7f39",
+      "name": "Extract the jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [336, 240],
+      "notes": "The link is stripped of tracking on purpose: with the original tokens the dedupe would treat the same job as new every hour."
+    },
+    {
+      "parameters": { "url": "https://himalayas.app/jobs/rss", "options": { "customFields": "himalayasJobs:locationRestriction" } },
+      "id": "b8353663-1042-411a-bd95-983b91eae95b",
+      "name": "Himalayas",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [80, 480],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "notes": "Worldwide remote job board. 100 jobs per read."
+    },
+    {
+      "parameters": { "url": "https://weworkremotely.com/remote-jobs.rss", "options": { "customFields": "region, country" } },
+      "id": "57fceb54-dabf-4a80-a892-6d2be823ddaf",
+      "name": "We Work Remotely",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [80, 672],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "notes": "Remote job board. Its title arrives as 'Company: Role'."
+    },
+    {
+      "id": "de605e0e-1e90-4691-9a8f-812b3d13b852",
+      "name": "What to search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-32, 900],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// One item per search. The HTTP node downstream runs once per item,\n// so three queries come out of a single node.\n// Chosen after testing six: broad words returned mostly on-site local jobs.\n// >>> REPLACE these with the terms of your own field.\nreturn ['automation', 'healthcare', 'n8n'].map((q) => ({ json: { q } }));"
+      }
+    },
+    {
+      "id": "8fa56afe-374f-4f4d-8610-7a76d03926ef",
+      "name": "Get on Board",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [224, 900],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://www.getonbrd.com/api/v0/search/jobs?per_page=40&expand%5B%5D=company&query=' + encodeURIComponent($json.q) }}",
+        "options": {}
+      },
+      "notes": "Public API, no credential needed. Verified 2026-08-08: HTTP 200.",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "2df283c5-cf3e-4220-a587-dd7e16eccedb",
+      "name": "Normalize LatAm results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 900],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Normalizes Get on Board into the same fields as every other source.\n// The 'region' field is what the scoring prompt already reads as WHERE THEY HIRE,\n// so the scoring node needs no changes.\nconst seen = new Set();\nconst out = [];\n\nfor (const item of $input.all()) {\n  for (const j of item.json.data || []) {\n    const a = j.attributes || {};\n    const url = (j.links || {}).public_url;\n    if (!url || seen.has(url)) continue;\n    seen.add(url);\n\n    const company = a.company?.data?.attributes?.name || '';\n    const countries = Array.isArray(a.countries) ? a.countries.join(', ') : '';\n\n    // fully_remote accepts any country; remote_local usually means one region;\n    // hybrid and no_remote tie you to a city. Passed raw to the LLM with the country.\n    const region = [a.remote_modality, countries].filter(Boolean).join(' — ') || 'unspecified';\n\n    const salary = a.min_salary\n      ? ' Published salary: ' + a.min_salary + '-' + (a.max_salary || a.min_salary) + ' USD per month.'\n      : '';\n\n    const text = [a.description, a.functions, a.desirable]\n      .filter(Boolean).join(' ')\n      .replace(/<[^>]+>/g, ' ')\n      .replace(/\\s+/g, ' ')\n      .trim();\n\n    out.push({\n      json: {\n        title: a.title + (company ? ' — ' + company : ''),\n        link: url,\n        region,\n        contentSnippet: 'Source: Get on Board (LatAm).' + salary + ' ' + text.slice(0, 1200),\n      },\n    });\n  }\n}\n\nreturn out;"
+      },
+      "notes": "The three searches overlap; the Set keyed by URL avoids scoring — and paying for — the same job twice."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "in-my-lane",
+              "leftValue": "={{ /health|medical|rcm|revenue cycle|claims|denial|patient|clinical|billing|insurance|payer|provider|automation|automat|workflow|n8n|zapier|make\\.com|\\bai\\b|artificial intelligence|llm|agent|operations manager|ops manager|integration|implementation|solutions engineer/i.test($json.title || '') }}",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true },
+              "rightValue": ""
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "f20eaae2-f53f-4db2-8804-6253f9080b86",
+      "name": "In my lane only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [336, 560],
+      "notes": "This is the cost control. General boards return ~200 jobs an hour, almost all from other fields. Without this filter each one costs an LLM call and a small monthly cap is gone in days. The regex is deliberately broad: it drops the obvious, the model decides the rest. >>> REPLACE with the keywords of your own field."
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.link }}",
+        "options": { "scope": "workflow", "historySize": 10000 }
+      },
+      "id": "67b25438-8318-4069-9f22-472bbaf25da4",
+      "name": "Only what I haven't seen",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [736, 256],
+      "notes": "Stores the links already sent. Without this the same jobs would arrive every hour."
+    },
+    {
+      "parameters": {
+        "model": { "__rl": true, "mode": "list", "value": "claude-haiku-4-5-20251001", "cachedResultName": "Claude Haiku 4.5" },
+        "options": { "maxTokensToSample": 600 }
+      },
+      "id": "0818fb48-1e1e-4114-ad1e-8a4b3a8cc70b",
+      "name": "Scoring model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [1056, 480]
+    },
+    {
+      "parameters": {
+        "model": { "__rl": true, "mode": "list", "value": "claude-haiku-4-5-20251001", "cachedResultName": "Claude Haiku 4.5" },
+        "options": { "maxTokensToSample": 600 }
+      },
+      "id": "19080239-f0b1-4ec9-a222-4123c166522c",
+      "name": "Repair model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [1328, 672],
+      "notes": "Only fires when the scoring model returns malformed JSON. Without it, one bad response kills the whole run."
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"score\": { \"type\": \"integer\", \"minimum\": 0, \"maximum\": 10, \"description\": \"How well the job fits the profile\" },\n    \"reason\": { \"type\": \"string\", \"description\": \"One short sentence explaining the score\" },\n    \"keywords\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"Up to 4 terms from the posting the CV should mirror\" }\n  },\n  \"required\": [\"score\", \"reason\", \"keywords\"]\n}",
+        "autoFix": true
+      },
+      "id": "1ba257bd-fb2f-47a7-a8a4-36580b6b3c6d",
+      "name": "Response format",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [1232, 464]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'TITLE: ' + $json.title + ($json['himalayasJobs:locationRestriction'] ? '\\n\\nWHERE THEY HIRE: ' + $json['himalayasJobs:locationRestriction'] : '') + ($json.region ? '\\n\\nWHERE THEY HIRE: ' + $json.region + ($json.country ? ' — ' + $json.country : '') : '') + '\\n\\nTEXT: ' + String($json['content:encodedSnippet'] || $json.contentSnippet || '').slice(0, 1500) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "You score job postings from 0 to 10 for how well they fit one candidate.\n\n>>> EVERYTHING BELOW THIS LINE IS AN EXAMPLE. REPLACE IT WITH YOUR OWN PROFILE.\n>>> Be specific: vague profiles produce vague scores. Name the tools, the\n>>> industry and the seniority you actually have.\n\nWHO THE CANDIDATE IS\n- 6 years running operations in <industry> for the <market> market.\n- Deep knowledge of: <the three or four things you genuinely know>.\n- Also builds: <your technical stack>.\n- <Language levels>. Lives in <city, COUNTRY>. Remote only.\n- Targets: <role 1>, <role 2>, <role 3>.\n\nTHE RULE THAT OVERRIDES EVERY OTHER ONE: CAN THEY ACTUALLY HIRE THIS PERSON?\nThe candidate lives in <COUNTRY> and is not relocating. The question is not what\ncountry the company is in, but WHERE THE PERSON IN THIS ROLE IS ALLOWED TO LIVE.\n\nWORKS (no cap): Worldwide, Anywhere, Global, Remote with no country named, a\nregion that includes <COUNTRY>, <COUNTRY> itself, or any country list that\nincludes it. Also when the posting says nothing about location.\n\nDOES NOT WORK (hard cap of 4): any restriction to a country or region that does\nNOT include <COUNTRY>. It does not matter which country it is. Also capped:\n\"remote within <country>\", \"must be authorized to work in <country>\", \"hybrid\",\n\"on-site\", and any named city as headquarters.\n\nWATCH THIS TRAP: \"remote\" does NOT mean they accept <COUNTRY>. \"Remote from\n<other country>\" is remote AND excludes the candidate. If a country name that is\nnot <COUNTRY> appears next to the word remote, that IS a geographic restriction.\nNever write \"no geographic restriction\" about a posting where you just named a\ncountry.\n\nThe cap is a ceiling, not a deduction: a role that cannot hire them is not worth\ntheir time even if it describes their entire career. If the location genuinely\nis not mentioned anywhere, do not assume exclusion — score on content.\n\nHOW TO SCORE (within what the cap allows)\n- 9-10: <your exact intersection — the rarest combination you offer>.\n- 7-8: strong on one of your two axes.\n- 4-6: technical but generic, or asks for experience you do not have.\n- 0-3: different field, or someone OFFERING services rather than hiring.\n\nRAISE the score when the posting names <your keywords>.\nLOWER the score when it asks for <the requirements you clearly do not meet>.\n\nThe reason goes in one sentence, direct, no filler. No \"this opportunity\nrepresents\": say why it fits or why it does not. If the geographic cap applied,\nopen the sentence by naming the country that blocks it."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "07083bdf-6251-475e-be1f-15ec04e0f54b",
+      "name": "Score the job",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [1040, 256],
+      "notes": "If this fails, the run continues: better an alert with no score than a lost job."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "combinator": "or",
+          "conditions": [
+            { "id": "high-score", "leftValue": "={{ $json.output.score }}", "operator": { "type": "number", "operation": "gte" }, "rightValue": 7 },
+            { "id": "no-score", "leftValue": "={{ $json.output ? 'yes' : '' }}", "operator": { "type": "string", "operation": "empty", "singleValue": true } }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "af56b652-2ca4-4378-9aae-fe67ea2e83d2",
+      "name": "Worth it",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1504, 256],
+      "notes": "Only 7 and above pass. If the score is missing because the model failed, it passes too: better to review it by hand than lose it."
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ ( (($json.output && $json.output.score !== undefined) ? ('\\u{1F3AF} ' + $json.output.score + '/10 — ') : '\\u{1F4BC} ') + String($('Only what I haven\\'t seen').item.json.title) + '\\n\\n' + (($json.output && $json.output.reason) ? (String($json.output.reason) + '\\n\\n') : '') + (($json.output && $json.output.keywords && $json.output.keywords.length) ? ('Mirror: ' + $json.output.keywords.join(', ') + '\\n\\n') : '') + String($('Only what I haven\\'t seen').item.json.link) ).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;') }}",
+        "additionalFields": { "appendAttribution": false },
+        "resource": "message",
+        "operation": "sendMessage"
+      },
+      "id": "811878a3-b3f1-4691-a006-433fcb822f90",
+      "name": "Tell me on Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1824, 240],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "HTML is escaped before sending: a job title with an ampersand would otherwise break the message."
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [[
+        { "node": "n8n job board", "type": "main", "index": 0 },
+        { "node": "LinkedIn alerts", "type": "main", "index": 0 },
+        { "node": "Himalayas", "type": "main", "index": 0 },
+        { "node": "We Work Remotely", "type": "main", "index": 0 },
+        { "node": "What to search", "type": "main", "index": 0 }
+      ]]
+    },
+    "n8n job board": { "main": [[{ "node": "Real openings only", "type": "main", "index": 0 }]] },
+    "Real openings only": { "main": [[{ "node": "Only what I haven't seen", "type": "main", "index": 0 }]] },
+    "LinkedIn alerts": { "main": [[{ "node": "Extract the jobs", "type": "main", "index": 0 }]] },
+    "Extract the jobs": { "main": [[{ "node": "Only what I haven't seen", "type": "main", "index": 0 }]] },
+    "Himalayas": { "main": [[{ "node": "In my lane only", "type": "main", "index": 0 }]] },
+    "We Work Remotely": { "main": [[{ "node": "In my lane only", "type": "main", "index": 0 }]] },
+    "What to search": { "main": [[{ "node": "Get on Board", "type": "main", "index": 0 }]] },
+    "Get on Board": { "main": [[{ "node": "Normalize LatAm results", "type": "main", "index": 0 }]] },
+    "Normalize LatAm results": { "main": [[{ "node": "In my lane only", "type": "main", "index": 0 }]] },
+    "In my lane only": { "main": [[{ "node": "Only what I haven't seen", "type": "main", "index": 0 }]] },
+    "Only what I haven't seen": { "main": [[{ "node": "Score the job", "type": "main", "index": 0 }]] },
+    "Scoring model": { "ai_languageModel": [[{ "node": "Score the job", "type": "ai_languageModel", "index": 0 }]] },
+    "Repair model": { "ai_languageModel": [[{ "node": "Response format", "type": "ai_languageModel", "index": 0 }]] },
+    "Response format": { "ai_outputParser": [[{ "node": "Score the job", "type": "ai_outputParser", "index": 0 }]] },
+    "Score the job": { "main": [[{ "node": "Worth it", "type": "main", "index": 0 }]] },
+    "Worth it": { "main": [[{ "node": "Tell me on Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
